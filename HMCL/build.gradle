@@ -17,7 +17,6 @@ import java.security.spec.PKCS8EncodedKeySpec
 import java.util.jar.JarFile
 import java.util.jar.JarOutputStream
 import java.util.jar.Pack200
-import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipFile
 import java.nio.file.Files
 
@@ -128,13 +127,6 @@ shadowJar {
     }
 }
 
-def createExecutable(String suffix, String header) {
-    def output = new File(jar.archivePath.parentFile, jar.archivePath.name[0..-4] + suffix)
-    output.bytes = new File(project.projectDir, header).bytes
-    output << jar.archivePath.bytes
-    createChecksum(output)
-}
-
 processResources {
     ext.convertToBSS = { String resource ->
         // exclude resource
@@ -169,17 +161,4 @@ task makePackXz(dependsOn: makePack) doLast {
     createChecksum(packXz)
 }
 
-task makePackGz(dependsOn: makePack) doLast {
-    def packGz = new File(makePack.outputPath.parentFile, makePack.outputPath.name + ".gz")
-    new GZIPOutputStream(packGz.newOutputStream()).withCloseable { it << makePack.outputPath.bytes }
-    createChecksum(packGz)
-}
-
-
-task makeExecutables(dependsOn: jar) doLast {
-    createExecutable("exe", "src/main/resources/assets/HMCLauncher.exe")
-}
-
 build.dependsOn makePackXz
-build.dependsOn makePackGz
-build.dependsOn makeExecutables

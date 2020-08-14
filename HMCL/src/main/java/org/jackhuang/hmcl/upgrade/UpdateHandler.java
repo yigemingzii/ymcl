@@ -17,11 +17,8 @@
  */
 package org.jackhuang.hmcl.upgrade;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import javafx.application.Platform;
 
-import org.jackhuang.hmcl.Main;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
@@ -29,7 +26,6 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.UpgradeDialog;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.util.StringUtils;
-import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.io.JarUtils;
 import org.jackhuang.hmcl.util.platform.JavaVersion;
 
@@ -38,6 +34,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.regex.Matcher;
@@ -55,19 +52,6 @@ public final class UpdateHandler {
      * @return whether to exit
      */
     public static boolean processArguments(String[] args) {
-        breakForceUpdateFeature();
-
-        if (isNestedApplication()) {
-            // updated from old versions
-            try {
-                performMigration();
-            } catch (IOException e) {
-                LOG.log(Level.WARNING, "Failed to perform migration", e);
-                JOptionPane.showMessageDialog(null, i18n("fatal.apply_update_failure", Metadata.PUBLISH_URL) + "\n" + StringUtils.getStackTrace(e), "Error", JOptionPane.ERROR_MESSAGE);
-            }
-            return true;
-        }
-
         if (args.length == 2 && args[0].equals("--apply-to")) {
             try {
                 applyUpdate(Paths.get(args[1]));
@@ -75,11 +59,6 @@ public final class UpdateHandler {
                 LOG.log(Level.WARNING, "Failed to apply update", e);
                 JOptionPane.showMessageDialog(null, i18n("fatal.apply_update_failure", Metadata.PUBLISH_URL) + "\n" + StringUtils.getStackTrace(e), "Error", JOptionPane.ERROR_MESSAGE);
             }
-            return true;
-        }
-
-        if (isFirstLaunchAfterUpgrade()) {
-            JOptionPane.showMessageDialog(null, i18n("fatal.migration_requires_manual_reboot"), "Info", JOptionPane.INFORMATION_MESSAGE);
             return true;
         }
 
@@ -132,8 +111,11 @@ public final class UpdateHandler {
         LOG.info("Applying update to " + target);
 
         Path self = getCurrentLocation();
+        if (isWinExecutable(target) != isWinExecutable(self)) {
+            throw new IOException("Incorrect file extension");
+        }
         IntegrityChecker.requireVerifiedJar(self);
-        ExecutableHeaderHelper.copyWithHeader(self, target);
+        Files.copy(self, target, StandardCopyOption.REPLACE_EXISTING);
 
         Optional<Path> newFilename = tryRename(target, Metadata.VERSION);
         if (newFilename.isPresent()) {
@@ -189,70 +171,4 @@ public final class UpdateHandler {
     static boolean isWinExecutable(Path path) {
         return path.getFileName().toString().endsWith(".exe");
     }
-
-    // ==== support for old versions ===
-    private static void performMigration() throws IOException {
-        LOG.info("Migrating from old versions");
-
-        Path location = getParentApplicationLocation()
-                .orElseThrow(() -> new IOException("Failed to get parent application location"));
-
-        requestUpdate(getCurrentLocation(), location);
-    }
-
-    /**
-     * This method must be called from the main thread.
-     */
-    private static boolean isNestedApplication() {
-        StackTraceElement[] stacktrace = Thread.currentThread().getStackTrace();
-        for (int i = 0; i < stacktrace.length; i++) {
-            StackTraceElement element = stacktrace[i];
-            if (Main.class.getName().equals(element.getClassName())) {
-                // we've reached the main method
-                return i + 1 != stacktrace.length;
-            }
-        }
-        return false;
-    }
-
-    private static Optional<Path> getParentApplicationLocation() {
-        String command = System.getProperty("sun.java.command");
-        if (command != null) {
-            Path path = Paths.get(command);
-            if (Files.isRegularFile(path)) {
-                return Optional.of(path.toAbsolutePath());
-            }
-        }
-        return Optional.empty();
-    }
-
-    private static boolean isFirstLaunchAfterUpgrade() {
-        Optional<Path> currentPath = JarUtils.thisJar();
-        if (currentPath.isPresent()) {
-            Path updated = Metadata.HMCL_DIRECTORY.resolve("HMCL-" + Metadata.VERSION + ".jar");
-            if (currentPath.get().toAbsolutePath().equals(updated.toAbsolutePath())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static void breakForceUpdateFeature() {
-        Path hmclVersionJson = Metadata.HMCL_DIRECTORY.resolve("hmclver.json");
-        if (Files.isRegularFile(hmclVersionJson)) {
-            try {
-                Map<?, ?> content = new Gson().fromJson(FileUtils.readText(hmclVersionJson), Map.class);
-                Object ver = content.get("ver");
-                if (ver instanceof String && ((String) ver).startsWith("3.")) {
-                    Files.delete(hmclVersionJson);
-                    LOG.info("Successfully broke the force update feature");
-                }
-            } catch (IOException e) {
-                LOG.log(Level.WARNING, "Failed to break the force update feature", e);
-            } catch (JsonParseException e) {
-                hmclVersionJson.toFile().delete();
-            }
-        }
-    }
-    // ====
 }
