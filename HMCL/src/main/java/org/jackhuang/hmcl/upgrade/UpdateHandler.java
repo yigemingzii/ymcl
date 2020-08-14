@@ -92,7 +92,8 @@ public final class UpdateHandler {
         Controllers.dialog(new UpgradeDialog(() -> {
             Path downloaded;
             try {
-                downloaded = Files.createTempFile("hmcl-update-", ".jar");
+                downloaded = Files.createTempFile("hmcl-update-",
+                        version.getType() == RemoteVersion.Type.EXE ? ".exe" : ".jar");
             } catch (IOException e) {
                 LOG.log(Level.WARNING, "Failed to create temp file", e);
                 return;
@@ -149,6 +150,9 @@ public final class UpdateHandler {
     }
 
     private static void requestUpdate(Path updateTo, Path self) throws IOException {
+        if (isWinExecutable(updateTo) != isWinExecutable(self)) {
+            throw new IOException("Incorrect file extension");
+        }
         IntegrityChecker.requireVerifiedJar(updateTo);
         startJava(updateTo, "--apply-to", self.toString());
     }
@@ -178,8 +182,12 @@ public final class UpdateHandler {
         return Optional.empty();
     }
 
-    private static Path getCurrentLocation() throws IOException {
+    static Path getCurrentLocation() throws IOException {
         return JarUtils.thisJar().orElseThrow(() -> new IOException("Failed to find current HMCL location"));
+    }
+
+    static boolean isWinExecutable(Path path) {
+        return path.getFileName().toString().endsWith(".exe");
     }
 
     // ==== support for old versions ===

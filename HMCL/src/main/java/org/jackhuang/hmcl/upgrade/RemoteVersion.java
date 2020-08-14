@@ -30,7 +30,8 @@ import java.util.Optional;
 
 public class RemoteVersion {
 
-    public static RemoteVersion fetch(String url) throws IOException {
+    /** 'type' can be JAR or PACK_XZ */
+    public static RemoteVersion fetchJar(String url) throws IOException {
         try {
             JsonObject response = JsonUtils.fromNonNullJson(NetworkUtils.doGet(NetworkUtils.toURL(url)), JsonObject.class);
             String version = Optional.ofNullable(response.get("version")).map(JsonElement::getAsString).orElseThrow(() -> new IOException("version is missing"));
@@ -42,6 +43,23 @@ public class RemoteVersion {
                 return new RemoteVersion(version, packXZUrl, Type.PACK_XZ, new IntegrityCheck("SHA-1", packXZHash));
             } else if (jarUrl != null && jarHash != null) {
                 return new RemoteVersion(version, jarUrl, Type.JAR, new IntegrityCheck("SHA-1", jarHash));
+            } else {
+                throw new IOException("No download url is available");
+            }
+        } catch (JsonParseException e) {
+            throw new IOException("Malformed response", e);
+        }
+    }
+
+    /** 'type' must be EXE */
+    public static RemoteVersion fetchExe(String url) throws IOException {
+        try {
+            JsonObject response = JsonUtils.fromNonNullJson(NetworkUtils.doGet(NetworkUtils.toURL(url)), JsonObject.class);
+            String version = Optional.ofNullable(response.get("version")).map(JsonElement::getAsString).orElseThrow(() -> new IOException("version is missing"));
+            String exeUrl = Optional.ofNullable(response.get("exe")).map(JsonElement::getAsString).orElse(null);
+            String exeHash = Optional.ofNullable(response.get("exesha1")).map(JsonElement::getAsString).orElse(null);
+            if (exeUrl != null && exeHash != null) {
+                return new RemoteVersion(version, exeUrl, Type.EXE, new IntegrityCheck("SHA-1", exeHash));
             } else {
                 throw new IOException("No download url is available");
             }
@@ -85,6 +103,7 @@ public class RemoteVersion {
 
     public enum Type {
         PACK_XZ,
-        JAR
+        JAR,
+        EXE
     }
 }

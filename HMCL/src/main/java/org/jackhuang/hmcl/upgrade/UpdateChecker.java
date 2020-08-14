@@ -91,7 +91,11 @@ public final class UpdateChecker {
                 pair("version", Metadata.VERSION),
                 pair("channel", channel.channelName)));
 
-        return RemoteVersion.fetch(url);
+        if (UpdateHandler.isWinExecutable(UpdateHandler.getCurrentLocation())) {
+            return RemoteVersion.fetchExe(url);
+        } else {
+            return RemoteVersion.fetchJar(url);
+        }
     }
 
     private static boolean isDevelopmentVersion(String version) {

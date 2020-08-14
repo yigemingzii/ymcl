@@ -46,6 +46,7 @@ class HMCLDownloadTask extends FileDownloadTask {
 
             switch (archiveFormat) {
                 case JAR:
+                case EXE:
                     break;
 
                 case PACK_XZ:
